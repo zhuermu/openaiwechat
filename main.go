@@ -27,40 +27,40 @@ var singleton *OpenaiWechat
 var firstUserDialogue = []openai.ChatCompletionMessage{
 	{
 		Role:    openai.ChatMessageRoleSystem,
-		Content: "你是一个非常有帮助的助手",
+		Content: "you are a very helpful assistant",
 	},
 	{
 		Role:    openai.ChatMessageRoleUser,
-		Content: "请问我怎么规划我的职业发展呢？",
+		Content: "How can I plan my career development?",
 	},
 	{
 		Role: openai.ChatMessageRoleAssistant,
-		Content: `职业发展是一个非常重要的话题，你可以从以下几个方面考虑：
-		你的兴趣爱好和技能：你可以考虑你的兴趣爱好和技能，看看哪些职业与你的兴趣爱好和技能相匹配。这样可以让你在工作中感到更有成就感和满足感。
-		行业前景：你可以考虑一些行业的前景，看看哪些行业在未来几年内会有更好的发展前景。这样可以让你在职业发展中更有保障。
-		学历和培训：你可以考虑你的学历和培训，看看哪些职业需要更高的学历和培训。这样可以让你更好地规划你的职业发展。`,
+		Content: `Planning your career development can be an important step towards achieving your professional goals. Here are some steps you can take to plan your career development:
+1. Assess your current skills and strengths: Before you start planning your career development, it's important to have a good understanding of your current skills and strengths. This can help you identify areas where you need to improve and areas where you excel.
+2. Identify your career goals: Think about what you want to achieve in your career. This can include short-term and long-term goals, such as learning a new skill, getting a promotion, or starting your own business.
+2. Research career paths: Once you have identified your career goals, research different career paths that can help you achieve those goals. Look for job descriptions, career websites, and other resources to learn more about the skills and experience needed for different roles.`,
 	},
 }
 
 func init() {
 	bot := openwechat.DefaultBot()
-	//bot := openwechat.DefaultBot(openwechat.Desktop) // 桌面模式，上面登录不上的可以尝试切换这种模式
+	//bot := openwechat.DefaultBot(openwechat.Desktop) // deskop mode，you can switch deskop mode if defualt can not login
 
-	// 注册消息处理函数
+	// Register message handler function
 	bot.MessageHandler = func(msg *openwechat.Message) {
 		replyChatMsg(msg)
 	}
 
-	// 注册登陆二维码回调
+	// Register login QR code callback
 	bot.UUIDCallback = openwechat.PrintlnQrcodeUrl
 
-	// 登陆
+	// login
 	if err := bot.Login(); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	client := openai.NewClient(os.Getenv("OPENAI_KEY"))
+	client := openai.NewClient(os.Getenv("OPENAI_KEY")) // your openai key
 	//client := openai.NewClient("")
 	singleton = &OpenaiWechat{
 		Openai:  client,
@@ -68,7 +68,7 @@ func init() {
 	}
 	singleton.userDialogue = make(map[string][]openai.ChatCompletionMessage)
 
-	// 阻塞主goroutine, 直到发生异常或者用户主动退出
+	// lock goroutine, until an exception occurs or the user actively exits
 	bot.Block()
 }
 func main() {
@@ -77,21 +77,22 @@ func main() {
 // replyChatMsg
 func replyChatMsg(msg *openwechat.Message) error {
 
-	if msg.IsSendByGroup() { // 只接受群消息且发送给自己的
+	if msg.IsSendByGroup() { // only accept group messages and send them to yourself
 		if !msg.IsAt() {
 			return nil
 		}
-	} else if !msg.IsSendByFriend() { // 非群消息只接受自己好友的消息
+	} else if !msg.IsSendByFriend() { // non-group messages only accept messages from your own friends
 		return nil
 	}
 
-	if msg.IsSendBySelf() { // 自己发送给自己的不回复
+	if msg.IsSendBySelf() { // self sent to self no reply
 		return nil
 	}
-	// 文本消息
+	// only handle text messages
 	if msg.IsText() {
 		fmt.Println(msg.Content)
-		if strings.Contains(msg.Content, "生成图片") {
+		// simple match processing
+		if strings.Contains(msg.Content, "生成图片") || strings.Contains(msg.Content, "generate image") {
 			return replyImage(msg)
 		}
 		return replyText(msg)
@@ -100,7 +101,7 @@ func replyChatMsg(msg *openwechat.Message) error {
 
 }
 
-// 回复图片
+// replyImage
 func replyImage(msg *openwechat.Message) error {
 	path, err := generateImage(msg)
 	if err != nil {
@@ -117,13 +118,13 @@ func replyImage(msg *openwechat.Message) error {
 	return nil
 }
 
-// 处理文本消息
+// replyText
 func replyText(msg *openwechat.Message) error {
 	messages, err := genMessage(msg)
 	if err != nil {
 		return err
 	}
-	result, err := callOpenaiApi(messages)
+	result, err := callOpenaiChat(messages)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -133,8 +134,10 @@ func replyText(msg *openwechat.Message) error {
 	return nil
 }
 
-// maxLength
+// dialogue context max length
 const maxLength = 33
+
+// temporary folder to save pictures
 const filePath = "./images/"
 
 // genMessage
@@ -207,8 +210,8 @@ func generateImage(msg *openwechat.Message) (string, error) {
 	return filePath, nil
 }
 
-// generateMessage
-func callOpenaiApi(messages []openai.ChatCompletionMessage) (string, error) {
+// callOpenaiChat
+func callOpenaiChat(messages []openai.ChatCompletionMessage) (string, error) {
 	resp, err := singleton.Openai.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
