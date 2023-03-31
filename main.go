@@ -27,24 +27,25 @@ var singleton *OpenaiWechat
 var firstUserDialogue = []openai.ChatCompletionMessage{
 	{
 		Role:    openai.ChatMessageRoleSystem,
-		Content: "you are a very helpful assistant",
+		Content: "你是一个非常有帮助的助手",
 	},
 	{
 		Role:    openai.ChatMessageRoleUser,
-		Content: "How can I plan my career development?",
+		Content: "请问我怎么规划我的职业发展呢？",
 	},
 	{
 		Role: openai.ChatMessageRoleAssistant,
-		Content: `Planning your career development can be an important step towards achieving your professional goals. Here are some steps you can take to plan your career development:
-1. Assess your current skills and strengths: Before you start planning your career development, it's important to have a good understanding of your current skills and strengths. This can help you identify areas where you need to improve and areas where you excel.
-2. Identify your career goals: Think about what you want to achieve in your career. This can include short-term and long-term goals, such as learning a new skill, getting a promotion, or starting your own business.
-2. Research career paths: Once you have identified your career goals, research different career paths that can help you achieve those goals. Look for job descriptions, career websites, and other resources to learn more about the skills and experience needed for different roles.`,
+		Content: `你好，我很高兴能帮助你。职业发展是一个非常重要的话题，你可以从以下几个方面考虑：
+		你的兴趣爱好和技能：你可以考虑你的兴趣爱好和技能，看看哪些职业与你的兴趣爱好和技能相匹配。这样可以让你在工作中感到更有成就感和满足感。
+		行业前景：你可以考虑一些行业的前景，看看哪些行业在未来几年内会有更好的发展前景。这样可以让你在职业发展中更有保障。
+		学历和培训：你可以考虑你的学历和培训，看看哪些职业需要更高的学历和培训。这样可以让你更好地规划你的职业发展。
+		希望这些建议能帮到你。你还有其他问题吗？`,
 	},
 }
 
 func init() {
-	bot := openwechat.DefaultBot()
-	//bot := openwechat.DefaultBot(openwechat.Desktop) // deskop mode，you can switch deskop mode if defualt can not login
+	//bot := openwechat.DefaultBot()
+	bot := openwechat.DefaultBot(openwechat.Desktop) // deskop mode，you can switch deskop mode if defualt can not login
 
 	// Register message handler function
 	bot.MessageHandler = func(msg *openwechat.Message) {
@@ -90,14 +91,58 @@ func replyChatMsg(msg *openwechat.Message) error {
 	}
 	// only handle text messages
 	if msg.IsText() {
+		msg.Content = strings.Replace(msg.Content, "@GPT3.5 ", "", 1)
 		fmt.Println(msg.Content)
 		// simple match processing
-		if strings.Contains(msg.Content, "生成图片") || strings.Contains(msg.Content, "generate image") {
+		if isImage, _ := isImageContent(msg.Content); isImage {
 			return replyImage(msg)
 		}
 		return replyText(msg)
 	}
 	return nil
+
+}
+
+// 图片生成校验
+var imageMessage = []openai.ChatCompletionMessage{
+	{
+		Role:    openai.ChatMessageRoleSystem,
+		Content: "你现在是一个语义识别助手，用户输入一个文本，你根据文本的内容来判断用户是不是想生成图片，是的话你就回复是，不是的话你就回复否，记住只能回复：是 或者 否",
+	},
+	{
+		Role:    openai.ChatMessageRoleUser,
+		Content: "我想生成一张小花猫的图片",
+	},
+	{
+		Role:    openai.ChatMessageRoleAssistant,
+		Content: "是",
+	},
+	{
+		Role:    openai.ChatMessageRoleUser,
+		Content: "请问冬天下雨我该穿什么衣服",
+	},
+	{
+		Role:    openai.ChatMessageRoleAssistant,
+		Content: "否",
+	},
+}
+
+// isImageConntent
+func isImageContent(content string) (bool, error) {
+	temp := append(imageMessage, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: content,
+	})
+	result, err := callOpenaiChat(temp)
+	if err != nil {
+		fmt.Printf("isImageConntent callOpenaiChat error: %v\n", err)
+		return false, err
+	}
+	fmt.Printf("isImageContent result: %s", result)
+	if strings.TrimSpace(result) == "是" {
+		return true, nil
+	}
+	return false, nil
 
 }
 
@@ -130,7 +175,7 @@ func replyText(msg *openwechat.Message) error {
 		return err
 	}
 	msg.ReplyText(result)
-	go addResultToMessage(result, msg)
+	addResultToMessage(result, msg)
 	return nil
 }
 
@@ -173,7 +218,7 @@ func generateImage(msg *openwechat.Message) (string, error) {
 	// Sample image by link
 	reqUrl := openai.ImageRequest{
 		Prompt:         msg.Content,
-		Size:           openai.CreateImageSize256x256,
+		Size:           openai.CreateImageSize512x512,
 		ResponseFormat: openai.CreateImageResponseFormatB64JSON,
 		N:              1,
 	}
@@ -215,8 +260,9 @@ func callOpenaiChat(messages []openai.ChatCompletionMessage) (string, error) {
 	resp, err := singleton.Openai.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model:    openai.GPT3Dot5Turbo,
-			Messages: messages,
+			Model:     openai.GPT3Dot5Turbo,
+			Messages:  messages,
+			MaxTokens: 512,
 		},
 	)
 	if err != nil {
